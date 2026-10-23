@@ -1,0 +1,190 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // HELPER FUNCTIONS FOR AUTHORIZATION & VALIDATION
+    // =========================================================================
+
+    // 1. Check if user is authenticated with Firebase Auth
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    // 2. Check if user is an authorized committee administrator
+    // Checks either custom claims (admin: true) OR the protected administratorProfiles document
+    // Must match: administratorProfiles/{uid} with isActive: true and role in ['admin', 'SUPER_ADMIN', 'ADMIN']
+    function isAdministrator() {
+      return isAuthenticated() && (
+        request.auth.token.admin == true ||
+        (
+          exists(/databases/$(database)/documents/administratorProfiles/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/administratorProfiles/$(request.auth.uid)).data.isActive == true &&
+          (
+            get(/databases/$(database)/documents/administratorProfiles/$(request.auth.uid)).data.role == 'admin' ||
+            get(/databases/$(database)/documents/administratorProfiles/$(request.auth.uid)).data.role == 'SUPER_ADMIN' ||
+            get(/databases/$(database)/documents/administratorProfiles/$(request.auth.uid)).data.role == 'ADMIN'
+          )
+        )
+      );
+    }
+
+    // 3. Helper to validate positive numeric amount (>= 0)
+    function isValidAmount(amount) {
+      return amount is number && amount >= 0;
+    }
+
+    // 4. Helper to validate strictly positive amount (> 0)
+    function isPositiveAmount(amount) {
+      return amount is number && amount > 0;
+    }
+
+    // 5. Helper to validate non-empty string
+    function isNonEmptyString(str) {
+      return str is string && str.size() > 0 && str.size() < 500;
+    }
+
+    // DEFAULT: Deny everything unless explicitly allowed
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // 1. ADMINISTRATOR PROFILES (مستندات مسؤولي النظام)
+    // =========================================================================
+    // Each admin's document ID MUST be their Firebase Auth UID: administratorProfiles/{uid}
+    // Only the authenticated user themselves (to verify their profile) or another admin can read.
+    // Self-elevation is prevented: ordinary users cannot create or modify admin profiles.
+    match /administratorProfiles/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdministrator());
+      allow write: if isAdministrator();
+    }
+
+    // =========================================================================
+    // 2. MEMBERS (الأعضاء)
+    // =========================================================================
+    match /members/{memberId} {
+      allow read: if isAdministrator();
+      allow create: if isAdministrator()
+        && isNonEmptyString(request.resource.data.fullName)
+        && isValidAmount(request.resource.data.monthlyPledge);
+      allow update: if isAdministrator()
+        && (!('monthlyPledge' in request.resource.data) || isValidAmount(request.resource.data.monthlyPledge));
+      allow delete: if isAdministrator();
+    }
+
+    // =========================================================================
+    // 3. MEETINGS (اجتماعات اللجنة)
+    // =========================================================================
+    match /meetings/{meetingId} {
+      allow read: if isAdministrator();
+      allow create, update: if isAdministrator()
+        && isNonEmptyString(request.resource.data.title);
+      allow delete: if isAdministrator();
+    }
+
+    // =========================================================================
+    // 4. ATTENDANCE RECORDS (سجلات الحضور والغياب - الغرامات الخمسة)
+    // =========================================================================
+    // Ensures none of the 5 fine types (lateFee, absenceFine, notebookFine, bibleFine, homeworkFine)
+    // or assessed/paid/remaining totals can ever be negative numbers.
+    match /attendanceRecords/{recordId} {
+      allow read: if isAdministrator();
+      allow create, update: if isAdministrator()
+        && (!('lateFee' in request.resource.data) || isValidAmount(request.resource.data.lateFee))
+        && (!('absenceFine' in request.resource.data) || isValidAmount(request.resource.data.absenceFine))
+        && (!('notebookFine' in request.resource.data) || isValidAmount(request.resource.data.notebookFine))
+        && (!('bibleFine' in request.resource.data) || isValidAmount(request.resource.data.bibleFine))
+        && (!('homeworkFine' in request.resource.data) || isValidAmount(request.resource.data.homeworkFine))
+        && (!('totalAssessedFine' in request.resource.data) || isValidAmount(request.resource.data.totalAssessedFine))
+        && (!('fineAmountPaid' in request.resource.data) || isValidAmount(request.resource.data.fineAmountPaid))
+        && (!('fineRemainingAmount' in request.resource.data) || isValidAmount(request.resource.data.fineRemainingAmount));
+      allow delete: if isAdministrator();
+    }
+
+    // =========================================================================
+    // 5. FINES (سجلات تحصيل الغرامات الفردية)
+    // =========================================================================
+    match /fines/{fineId} {
+      allow read: if isAdministrator();
+      allow create: if isAdministrator()
+        && isPositiveAmount(request.resource.data.amount);
+      allow update, delete: if isAdministrator();
+    }
+
+    // =========================================================================
+    // 6. PLEDGE OBLIGATIONS (الاشتراكات الشهرية المستحقة)
+    // =========================================================================
+    match /pledgeObligations/{obligationId} {
+      allow read: if isAdministrator();
+      allow create, update: if isAdministrator()
+        && isValidAmount(request.resource.data.expectedAmount)
+        && isValidAmount(request.resource.data.totalPaid);
+      allow delete: if isAdministrator();
+    }
+
+    // =========================================================================
+    // 7. PLEDGE PAYMENTS (دفعات الاشتراكات الفعلية)
+    // =========================================================================
+    match /pledgePayments/{paymentId} {
+      allow read: if isAdministrator();
+      allow create: if isAdministrator()
+        && isPositiveAmount(request.resource.data.amount);
+      allow update, delete: if isAdministrator();
+    }
+
+    // =========================================================================
+    // 8. DONATIONS (التبرعات الواردة)
+    // =========================================================================
+    match /donations/{donationId} {
+      allow read: if isAdministrator();
+      allow create: if isAdministrator()
+        && isPositiveAmount(request.resource.data.amount);
+      allow update: if isAdministrator()
+        && isPositiveAmount(request.resource.data.amount);
+      allow delete: if isAdministrator();
+    }
+
+    // =========================================================================
+    // 9. EXPENSES (المصروفات والنفقات)
+    // =========================================================================
+    match /expenses/{expenseId} {
+      allow read: if isAdministrator();
+      allow create: if isAdministrator()
+        && isNonEmptyString(request.resource.data.description)
+        && isPositiveAmount(request.resource.data.amount);
+      allow update: if isAdministrator()
+        && isPositiveAmount(request.resource.data.amount);
+      allow delete: if isAdministrator();
+    }
+
+    // =========================================================================
+    // 10. FINANCIAL TRANSACTIONS LEDGER (دفتر الخزينة المركزي)
+    // =========================================================================
+    match /financialTransactions/{transactionId} {
+      allow read: if isAdministrator();
+      allow create, update: if isAdministrator()
+        && isPositiveAmount(request.resource.data.amount)
+        && request.resource.data.direction in ['income', 'expense'];
+      allow delete: if isAdministrator();
+    }
+
+    // =========================================================================
+    // 11. SETTINGS (إعدادات النظام العامة)
+    // =========================================================================
+    match /settings/{settingId} {
+      allow read: if isAdministrator();
+      allow write: if isAdministrator();
+    }
+
+    // =========================================================================
+    // 12. AUDIT LOGS (سجل التدقيق والرقابة)
+    // =========================================================================
+    // Append-only: deletions and updates are strictly prevented to preserve financial audit trail.
+    match /auditLogs/{logId} {
+      allow read: if isAdministrator();
+      allow create: if isAdministrator();
+      allow update, delete: if false;
+    }
+  }
+}
