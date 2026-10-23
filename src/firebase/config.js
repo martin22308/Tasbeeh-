@@ -19,13 +19,27 @@ const getEnv = (viteKey, craKey) => {
 };
 
 const firebaseConfig = {
-  apiKey: getEnv('VITE_FIREBASE_API_KEY', 'REACT_APP_FIREBASE_API_KEY'),
-  authDomain: getEnv('VITE_FIREBASE_AUTH_DOMAIN', 'REACT_APP_FIREBASE_AUTH_DOMAIN'),
-  projectId: getEnv('VITE_FIREBASE_PROJECT_ID', 'REACT_APP_FIREBASE_PROJECT_ID'),
-  storageBucket: getEnv('VITE_FIREBASE_STORAGE_BUCKET', 'REACT_APP_FIREBASE_STORAGE_BUCKET'),
-  messagingSenderId: getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID', 'REACT_APP_FIREBASE_MESSAGING_SENDER_ID'),
-  appId: getEnv('VITE_FIREBASE_APP_ID', 'REACT_APP_FIREBASE_APP_ID'),
-  measurementId: getEnv('VITE_FIREBASE_MEASUREMENT_ID', 'REACT_APP_FIREBASE_MEASUREMENT_ID'),
+  apiKey:
+    getEnv('VITE_FIREBASE_API_KEY', 'REACT_APP_FIREBASE_API_KEY') ||
+    'AIzaSyDtdl-dWxjELjzeFHovUebgwWvI4v2PHGY',
+  authDomain:
+    getEnv('VITE_FIREBASE_AUTH_DOMAIN', 'REACT_APP_FIREBASE_AUTH_DOMAIN') ||
+    'tasbeeh-committee-management.firebaseapp.com',
+  projectId:
+    getEnv('VITE_FIREBASE_PROJECT_ID', 'REACT_APP_FIREBASE_PROJECT_ID') ||
+    'tasbeeh-committee-management',
+  storageBucket:
+    getEnv('VITE_FIREBASE_STORAGE_BUCKET', 'REACT_APP_FIREBASE_STORAGE_BUCKET') ||
+    'tasbeeh-committee-management.firebasestorage.app',
+  messagingSenderId:
+    getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID', 'REACT_APP_FIREBASE_MESSAGING_SENDER_ID') ||
+    '169420537514',
+  appId:
+    getEnv('VITE_FIREBASE_APP_ID', 'REACT_APP_FIREBASE_APP_ID') ||
+    '1:169420537514:web:660d34008a5b4fbf62dad3',
+  measurementId:
+    getEnv('VITE_FIREBASE_MEASUREMENT_ID', 'REACT_APP_FIREBASE_MEASUREMENT_ID') ||
+    'G-QBKT04P3LS',
 };
 
 // Check if credentials have been properly set (not undefined and not placeholder)
